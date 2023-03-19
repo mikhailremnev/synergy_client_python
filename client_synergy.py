@@ -1,5 +1,26 @@
 #!/usr/bin/env python3
 
+"""
+Simple synergy client in Python
+
+Currently all of the event handling work is done by MessageHandler class
+
+              1  ┌──────┐
+       ┌─────────┤Stream│
+       │         └──────┘
+┌──────◇───────┐
+│MessageHandler│
+└──────◇───────┘
+       │         ┌────────┐
+       └─────────┤Protocol│
+              1  └────────┘
+
+Stream -- reading/writing messages
+Protocol -- parsing messages from bytes to list and then formatting them back from list to bytes
+
+There is also a ProtocolMsg static class that contains all message formats
+"""
+
 import socket
 import time
 import struct
@@ -25,15 +46,22 @@ def main():
     # test_parser()
     # return
 
-    host = socket.gethostname()
-    # host = '192.168.162.201'
-    port = 24800
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((host, port))
-    stream = Stream(sock)
-    protocol = Protocol()
+    run()
 
-    handler = MessageHandler(stream, protocol)
+def run(stream=None, protocol=None, handler=None):
+    if stream is None:
+        host = socket.gethostname()
+        # host = '192.168.162.201'
+        port = 24800
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((host, port))
+        stream = Stream(sock)
+
+    if protocol is None:
+        protocol = Protocol()
+
+    if handler is None:
+        handler = MessageHandler(stream, protocol)
 
     try:
         while True:
@@ -55,7 +83,6 @@ def main():
             stream.send(response)
     finally:
         stream.close()
-
 
 ################################################
 
