@@ -37,10 +37,12 @@ def test_parser():
     print(protocol.parse(msg))
     msg = b'DCLP\x00\x00\x00\x00\x00\x01\x00\x00\x00\x0213'
     print(protocol.parse(msg))
+    msg = b'DKRP\x00d\x00\x02\x00\x01\x00('
+    print(protocol.parse(msg))
     msg = b'DCLP\x01\x00\x00\x00\x00\x02\x00\x00\x00\x1e\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x12$ \xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0'
     print(protocol.parse(msg))
     # TODO: Make sense out of clipboard parsing:
-    assert protocol.parse(msg)[4] == '\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x12$ проверка'
+    # assert protocol.parse(msg)[4] == '\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x12$ проверка'
 
 def main():
     # test_parser()
@@ -68,7 +70,13 @@ def run(stream=None, protocol=None, handler=None):
             msg = stream.read()
             if msg is None: continue
 
-            msg_info = protocol.parse(msg)
+            if not msg.startswith(b'DMMV'):
+                print('From server:', msg)
+
+            try:
+                msg_info = protocol.parse(msg)
+            except:
+                raise RuntimeError('error parsing', msg)
 
             # [msg_name, *msg_args] 
             if msg_info[0] != 'kMsgDMouseMove':
@@ -234,8 +242,22 @@ class MessageHandler:
         languageCode is parameter which helps client to react on unknwon
         language letters
         """
+        import pynput
+        keyboard = pynput.keyboard.Controller()
+        key_id, key_mask, key_button = msg_info[1:]
 
-    def on_d_key_down(self, msg_info):
+        if key_id < 0:
+            # Not sure why additional 0x1000 is necessary
+            key_id +=  0xffff + 0x1000 + 1
+            key     = pynput.keyboard.KeyCode(key_id)
+        else:
+            key_id  = button_to_keysym(key_button)
+            key     = pynput.keyboard.KeyCode(key_id)
+            # key     = chr(key_id)
+        print(key)
+        keyboard.press(key)
+
+    def on_d_key_down1_0(self, msg_info):
         """ key pressed 1.0:  same as above but without KeyButton
         """
 
@@ -245,7 +267,7 @@ class MessageHandler:
         $5 =language code
         """
 
-    def on_d_key_repeat(self, msg_info):
+    def on_d_key_repeat1_0(self, msg_info):
         """ key auto-repeat 1.0:  same as above but without KeyButton
         """
 
@@ -253,8 +275,20 @@ class MessageHandler:
         """ key released:  primary -> secondary
         $1 = KeyID, $2 = KeyModifierMask, $3 = KeyButton
         """
+        import pynput
+        keyboard = pynput.keyboard.Controller()
+        key_id, key_mask, key_button = msg_info[1:]
+        if key_id < 0:
+            # Not sure why additional 0x1000 is necessary
+            key_id +=  0xffff + 0x1000 + 1
+            key     = pynput.keyboard.KeyCode(key_id)
+        else:
+            # key     = chr(key_id)
+            key_id  = button_to_keysym(key_button)
+            key     = pynput.keyboard.KeyCode(key_id)
+        keyboard.release(key)
 
-    def on_d_key_up(self, msg_info):
+    def on_d_key_up1_0(self, msg_info):
         """ key released 1.0:  same as above but without KeyButton
         """
 
@@ -263,20 +297,22 @@ class MessageHandler:
         $1 = ButtonID
         """
         button_id = msg_info[1]
-        import mouse
-        if button_id == 1: mouse.click('left')
-        if button_id == 2: mouse.click('middle')
-        if button_id == 3: mouse.click('right')
+        import pynput
+        mouse = pynput.mouse.Controller()
+        if button_id == 1: mouse.press(pynput.mouse.Button.left)
+        if button_id == 2: mouse.press(pynput.mouse.Button.middle)
+        if button_id == 3: mouse.press(pynput.mouse.Button.right)
 
     def on_d_mouse_up(self, msg_info):
         """ mouse button released:  primary -> secondary
         $1 = ButtonID
         """
         button_id = msg_info[1]
-        import mouse
-        if button_id == 1: mouse.release('left')
-        if button_id == 2: mouse.release('middle')
-        if button_id == 3: mouse.release('right')
+        import pynput
+        mouse = pynput.mouse.Controller()
+        if button_id == 1: mouse.release(pynput.mouse.Button.left)
+        if button_id == 2: mouse.release(pynput.mouse.Button.middle)
+        if button_id == 3: mouse.release(pynput.mouse.Button.right)
 
     def on_d_mouse_move(self, msg_info):
         """ mouse moved:  primary -> secondary
@@ -299,7 +335,7 @@ class MessageHandler:
         the user) or left.
         """
 
-    def on_d_mouse_wheel(self, msg_info):
+    def on_d_mouse_wheel1_0(self, msg_info):
         """ mouse vertical scroll:  primary -> secondary
         like as kMsgDMouseWheel except only sends $1 = yDelta.
         """
@@ -388,21 +424,25 @@ class MessageHandler:
         """ incompatible versions:  primary -> secondary
         $1 = major version of primary, $2 = minor version of primary.
         """
+        raise RuntimeError('Incompatible protocol version')
 
     def on_e_busy(self, msg_info):
         """ name provided when connecting is already in use:  primary -> secondary
         """
+        raise RuntimeError('Connection already in use')
 
     def on_e_unknown(self, msg_info):
         """ unknown client:  primary -> secondary
         name provided when connecting is not in primary's screen
         configuration map.
         """
+        raise RuntimeError('Not in primary screen configuration map')
 
     def on_e_bad(self, msg_info):
         """ protocol violation:  primary -> secondary
         primary should disconnect after sending this message.
         """
+        raise RuntimeError('Protocol violation')
 
 ################################################
 
@@ -414,11 +454,15 @@ class Stream:
         self.sock = sock
     def read(self):
         # Packet size is sent as big-endian int
-        size = self.sock.recv(4)
+        size       = self.sock.recv(4)
         if len(size) == 0: return None
-        size = struct.unpack('>i', size)[0]
+        size       = struct.unpack('>i', size)[0]
+        to_receive = size
         #
-        data = self.sock.recv(size)
+        data = b''
+        while to_receive > 0:
+            data += self.sock.recv(to_receive)
+            to_receive -= len(data)
         return data
     def send(self, data):
         # Packet size is sent as big-endian int
@@ -538,8 +582,12 @@ class Protocol:
                         vec_vals.append(val)
                     ret.append(vec_vals)
                 elif fmt_id == 's':
+                    # It seems that sometimes string argument can be skipeed
+                    if len(msg) == 0 and len(fmt) == 0: continue
                     strlen, msg = self.__unpack_int(msg, 4)
-                    ret.append(msg[:strlen].decode('utf8'))
+                    # TODO: Some clipboard contents crashed during parsing when using UTF8
+                    content = msg[:strlen] # .decode('utf8')
+                    ret.append(content)
                     msg = msg[strlen:]
                 else:
                     raise KeyError('Format %s not supported' % fmt_id)
@@ -725,6 +773,15 @@ class ProtocolMsg:
     # protocol violation:  primary -> secondary
     # primary should disconnect after sending this message.
     kMsgEBad                     = "EBAD";
+
+################################################
+# AUXILLARY FUNCTIONS
+
+def button_to_keysym(btn_id):
+    import pynput
+    keyboard = pynput.keyboard.Controller()
+    key_map = keyboard.keyboard_mapping
+    return [k for (k, v) in key_map.items() if v[0] == btn_id][0]
 
 ################################################
 
