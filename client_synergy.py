@@ -101,9 +101,11 @@ class MessageHandler:
     So that 'kMsgHello' message is handled by 'on_hello' method,
     'kMsgCEnter' is handled by 'on_c_enter' method
     """
-    def __init__(self, stream, protocol):
+    def __init__(self, stream, protocol, client_name='tablet'):
         self.stream   = stream
         self.protocol = protocol
+
+        self.client_name = client_name
 
     def get_handler(self, msg_name):
         """See class documentation for details on method_name
@@ -136,7 +138,10 @@ class MessageHandler:
         # Expected message: b'Synergy\x00\x01\x00\x06'
         ver_maj, ver_min = msg_info[1:]
         print(f'Connected to server v{ver_maj}.{ver_min}')
-        return self.protocol.format(ProtocolMsg.kMsgHelloBack, 1, 6, 'tablet')
+        ver_maj, ver_min = 1,6
+        return self.protocol.format(ProtocolMsg.kMsgHelloBack,
+                                    ver_maj, ver_min,
+                                    self.client_name)
 
     def on_hello_back(self, msg_info):
         """ respond to hello from server;  secondary -> primary
