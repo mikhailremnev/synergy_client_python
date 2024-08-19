@@ -68,7 +68,11 @@ def run(stream=None, protocol=None, handler=None):
     try:
         while True:
             msg = stream.read()
-            if msg is None: continue
+            if msg is None:
+                # Connection closed, trying to reconnect
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.connect((host, port))
+                stream = Stream(sock)
 
             if not msg.startswith(b'DMMV'):
                 print('From server:', msg)
